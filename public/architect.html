@@ -338,6 +338,13 @@
     </div>
 
     <script>
+        async function initializeSession() {
+            try {
+                await fetch('/api/init', { credentials: 'include' });
+            } catch(e) {}
+        }
+        window.onload = initializeSession;
+
         let currentPlan = 'architect-monthly';
         let userEmail = '';
 
@@ -371,6 +378,7 @@
                 const response = await fetch('/api/email', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify({ email: email })
                 });
                 
@@ -399,6 +407,7 @@
                 const response = await fetch('/api/checkout', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify({ plan: currentPlan })
                 });
                 
@@ -437,4 +446,3 @@
     </script>
 </body>
 </html>
-Add public folder with conversion pages
