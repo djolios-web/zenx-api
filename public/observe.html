@@ -294,6 +294,13 @@
     </div>
 
     <script>
+        async function initializeSession() {
+            try {
+                await fetch('/api/init', { credentials: 'include' });
+            } catch(e) {}
+        }
+        window.onload = initializeSession;
+
         async function submitEmail() {
             const email = document.getElementById('email').value;
             const errorDiv = document.getElementById('error1');
@@ -312,6 +319,7 @@
                 const response = await fetch('/api/email', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify({ email: email })
                 });
                 
