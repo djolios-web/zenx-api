@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZenX — Initiate Access</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0a0a0a;
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 480px;
+            width: 100%;
+            text-align: center;
+        }
+        .logo {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .tagline {
+            color: #888;
+            font-size: 0.95rem;
+            margin-bottom: 40px;
+        }
+        .card {
+            background: #111;
+            border: 1px solid #222;
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+        .step-indicator {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 30px;
+        }
+        .step {
+            width: 32px;
+            height: 4px;
+            border-radius: 2px;
+            background: #333;
+            transition: all 0.3s ease;
+        }
+        .step.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 30px;
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        input[type="email"] {
+            width: 100%;
+            padding: 16px 20px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        input[type="email"]:focus {
+            border-color: #667eea;
+        }
+        input[type="email"]::placeholder {
+            color: #555;
+        }
+        .btn {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 10px;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .billing-toggle {
+            display: flex;
+            background: #1a1a1a;
+            border-radius: 12px;
+            padding: 4px;
+            margin-bottom: 30px;
+        }
+        .billing-option {
+            flex: 1;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+            color: #666;
+        }
+        .billing-option.active {
+            background: #333;
+            color: #fff;
+        }
+        .save-badge {
+            background: #22c55e;
+            color: #fff;
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 4px;
+        }
+        .pricing {
+            margin-bottom: 30px;
+        }
+        .price {
+            font-size: 3rem;
+            font-weight: 800;
+            line-height: 1;
+        }
+        .price span {
+            font-size: 1rem;
+            color: #666;
+            font-weight: 400;
+        }
+        .features {
+            text-align: left;
+            margin-bottom: 30px;
+        }
+        .feature {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid #222;
+        }
+        .feature:last-child {
+            border-bottom: none;
+        }
+        .check {
+            color: #22c55e;
+            font-weight: bold;
+        }
+        .social-proof {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid #222;
+        }
+        .avatars {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 12px;
+        }
+        .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: 3px solid #111;
+            margin-left: -10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .avatar:first-child {
+            margin-left: 0;
+        }
+        .social-text {
+            color: #888;
+            font-size: 0.85rem;
+        }
+        .social-text strong {
+            color: #fff;
+        }
+        .urgency {
+            background: rgba(220, 38, 38, 0.1);
+            border: 1px solid rgba(220, 38, 38, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 20px;
+            color: #ef4444;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        .hidden {
+            display: none;
+        }
+        .error {
+            color: #ef4444;
+            font-size: 0.85rem;
+            margin-top: 10px;
+        }
+        .success-message {
+            color: #22c55e;
+            font-size: 0.9rem;
+            margin-top: 20px;
+        }
+        .secure-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            color: #555;
+            font-size: 0.8rem;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">ZenX</div>
+        <div class="tagline">Elite Systems Architecture Training</div>
+        
+        <div class="card">
+            <!-- Step 1: Email -->
+            <div id="step1">
+                <div class="step-indicator">
+                    <div class="step active"></div>
+                    <div class="step"></div>
+                </div>
+                <h1>Enter Your Email</h1>
+                <p class="subtitle">Secure your Initiate Access pass</p>
+                
+                <div class="urgency">🔥 Only 47 spots remaining at this tier</div>
+                
+                <div class="input-group">
+                    <input type="email" id="email" placeholder="your@email.com" required>
+                </div>
+                <div id="error1" class="error hidden"></div>
+                
+                <button class="btn" onclick="submitEmail()">Continue →</button>
+                
+                <div class="secure-badge">
+                    <span>🔒</span> SSL Encrypted • No spam, ever
+                </div>
+            </div>
+
+            <!-- Step 2: Offer -->
+            <div id="step2" class="hidden">
+                <div class="step-indicator">
+                    <div class="step active"></div>
+                    <div class="step active"></div>
+                </div>
+                <h1>Complete Your Access</h1>
+                <p class="subtitle">Structured training system to improve how you think</p>
+                
+                <div class="billing-toggle">
+                    <div class="billing-option active" onclick="setBilling('monthly')">
+                        Monthly
+                    </div>
+                    <div class="billing-option" onclick="setBilling('yearly')">
+                        Yearly <span class="save-badge">SAVE 30%</span>
+                    </div>
+                </div>
+                
+                <div class="pricing">
+                    <div class="price" id="price">$39<span>/month</span></div>
+                </div>
+                
+                <div class="features">
+                    <div class="feature">
+                        <span class="check">✓</span>
+                        <span>Core Architecture Modules</span>
+                    </div>
+                    <div class="feature">
+                        <span class="check">✓</span>
+                        <span>Weekly Live Q&A Sessions</span>
+                    </div>
+                    <div class="feature">
+                        <span class="check">✓</span>
+                        <span>Private Discord Community</span>
+                    </div>
+                    <div class="feature">
+                        <span class="check">✓</span>
+                        <span>Downloadable Resources</span>
+                    </div>
+                    <div class="feature">
+                        <span class="check">✓</span>
+                        <span>Cancel Anytime</span>
+                    </div>
+                </div>
+                
+                <div class="urgency">⏰ Offer expires in <span id="timer">14:32</span></div>
+                
+                <button class="btn" id="checkoutBtn" onclick="checkout()">Get Initiate Access</button>
+                
+                <div class="social-proof">
+                    <div class="avatars">
+                        <div class="avatar">JD</div>
+                        <div class="avatar">MK</div>
+                        <div class="avatar">AL</div>
+                        <div class="avatar">+2k</div>
+                    </div>
+                    <p class="social-text"><strong>2,847 architects</strong> joined this month</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPlan = 'initiate-monthly';
+        let userEmail = '';
+
+        function setBilling(type) {
+            document.querySelectorAll('.billing-option').forEach(el => el.classList.remove('active'));
+            event.target.closest('.billing-option').classList.add('active');
+            
+            if (type === 'monthly') {
+                currentPlan = 'initiate-monthly';
+                document.getElementById('price').innerHTML = '$39<span>/month</span>';
+            } else {
+                currentPlan = 'initiate-yearly';
+                document.getElementById('price').innerHTML = '$327<span>/year</span>';
+            }
+        }
+
+        async function submitEmail() {
+            const email = document.getElementById('email').value;
+            const errorDiv = document.getElementById('error1');
+            
+            if (!email || !email.includes('@')) {
+                errorDiv.textContent = 'Please enter a valid email address';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+            
+            document.querySelector('#step1 .btn').disabled = true;
+            document.querySelector('#step1 .btn').textContent = 'Processing...';
+            
+            try {
+                const response = await fetch('/api/email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email })
+                });
+                
+                if (response.ok) {
+                    userEmail = email;
+                    document.getElementById('step1').classList.add('hidden');
+                    document.getElementById('step2').classList.remove('hidden');
+                    startTimer();
+                } else {
+                    throw new Error('Failed to submit email');
+                }
+            } catch (err) {
+                errorDiv.textContent = 'Something went wrong. Please try again.';
+                errorDiv.classList.remove('hidden');
+                document.querySelector('#step1 .btn').disabled = false;
+                document.querySelector('#step1 .btn').textContent = 'Continue →';
+            }
+        }
+
+        async function checkout() {
+            const btn = document.getElementById('checkoutBtn');
+            btn.disabled = true;
+            btn.textContent = 'Processing...';
+            
+            try {
+                const response = await fetch('/api/checkout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plan: currentPlan })
+                });
+                
+                const data = await response.json();
+                
+                if (data.url) {
+                    window.location.href = data.url;
+                } else {
+                    throw new Error('No checkout URL received');
+                }
+            } catch (err) {
+                btn.disabled = false;
+                btn.textContent = 'Get Initiate Access';
+                alert('Checkout failed. Please try again.');
+            }
+        }
+
+        function startTimer() {
+            let minutes = 14, seconds = 32;
+            setInterval(() => {
+                if (seconds === 0) {
+                    if (minutes === 0) return;
+                    minutes--;
+                    seconds = 59;
+                } else {
+                    seconds--;
+                }
+                document.getElementById('timer').textContent = 
+                    `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            }, 1000);
+        }
+
+        document.getElementById('email').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') submitEmail();
+        });
+    </script>
+</body>
+</html>
+Add public folder with conversion pages
