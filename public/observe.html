@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZenX — Observer Access</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0a0a0a;
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 480px;
+            width: 100%;
+            text-align: center;
+        }
+        .logo {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .tagline {
+            color: #888;
+            font-size: 0.95rem;
+            margin-bottom: 40px;
+        }
+        .card {
+            background: #111;
+            border: 1px solid #222;
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+        .step-indicator {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 30px;
+        }
+        .step {
+            width: 32px;
+            height: 4px;
+            border-radius: 2px;
+            background: #333;
+            transition: all 0.3s ease;
+        }
+        .step.active {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 30px;
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        input[type="email"] {
+            width: 100%;
+            padding: 16px 20px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        input[type="email"]:focus {
+            border-color: #4facfe;
+        }
+        input[type="email"]::placeholder {
+            color: #555;
+        }
+        .btn {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            border: none;
+            border-radius: 12px;
+            color: #0a0a0a;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 10px;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(79, 172, 254, 0.3);
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .features {
+            text-align: left;
+            margin-bottom: 30px;
+        }
+        .feature {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid #222;
+        }
+        .feature:last-child {
+            border-bottom: none;
+        }
+        .check {
+            color: #22c55e;
+            font-weight: bold;
+        }
+        .free-badge {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: #0a0a0a;
+            font-size: 0.7rem;
+            padding: 4px 10px;
+            border-radius: 20px;
+            margin-bottom: 15px;
+            display: inline-block;
+            font-weight: 600;
+        }
+        .social-proof {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid #222;
+        }
+        .avatars {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 12px;
+        }
+        .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            border: 3px solid #111;
+            margin-left: -10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #0a0a0a;
+        }
+        .avatar:first-child {
+            margin-left: 0;
+        }
+        .social-text {
+            color: #888;
+            font-size: 0.85rem;
+        }
+        .social-text strong {
+            color: #fff;
+        }
+        .hidden {
+            display: none;
+        }
+        .error {
+            color: #ef4444;
+            font-size: 0.85rem;
+            margin-top: 10px;
+        }
+        .success-screen {
+            padding: 20px;
+        }
+        .success-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+        }
+        .success-title {
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+        }
+        .success-message {
+            color: #888;
+            font-size: 1rem;
+            margin-bottom: 30px;
+        }
+        .redirect-message {
+            color: #4facfe;
+            font-size: 0.9rem;
+        }
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #4facfe;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .secure-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            color: #555;
+            font-size: 0.8rem;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">ZenX</div>
+        <div class="tagline">Elite Systems Architecture Training</div>
+        
+        <div class="card">
+            <!-- Step 1: Email -->
+            <div id="step1">
+                <div class="step-indicator">
+                    <div class="step active"></div>
+                </div>
+                <span class="free-badge">FREE ACCESS</span>
+                <h1>Join the Observer Layer</h1>
+                <p class="subtitle">Get curated insights delivered to your inbox</p>
+                
+                <div class="features" style="margin-bottom: 30px;">
+                    <div class="feature">
+                        <span class="check">✓</span>
+                        <span>Weekly Architecture Newsletter</span>
+                    </div>
+                    <div class="feature">
+                        <span class="check">✓</span>
+                        <span>Free System Design Guides</span>
+                    </div>
+                    <div class="feature">
+                        <span class="check">✓</span>
+                        <span>Community Discord Read-Only</span>
+                    </div>
+                    <div class="feature">
+                        <span class="check">✓</span>
+                        <span>Early Access to New Content</span>
+                    </div>
+                </div>
+                
+                <div class="input-group">
+                    <input type="email" id="email" placeholder="your@email.com" required>
+                </div>
+                <div id="error1" class="error hidden"></div>
+                
+                <button class="btn" onclick="submitEmail()">Join Free →</button>
+                
+                <div class="social-proof">
+                    <div class="avatars">
+                        <div class="avatar">AB</div>
+                        <div class="avatar">CD</div>
+                        <div class="avatar">EF</div>
+                        <div class="avatar">+12k</div>
+                    </div>
+                    <p class="social-text"><strong>12,483 observers</strong> in the community</p>
+                </div>
+                
+                <div class="secure-badge">
+                    <span>🔒</span> SSL Encrypted • No spam, ever • Unsubscribe anytime
+                </div>
+            </div>
+
+            <!-- Success Screen -->
+            <div id="successScreen" class="hidden success-screen">
+                <div class="success-icon">🎉</div>
+                <h2 class="success-title">Welcome to Observer Layer</h2>
+                <p class="success-message">You're now part of the ZenX community.</p>
+                <p class="redirect-message">
+                    Redirecting to ZenX Hub... <span class="spinner"></span>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function submitEmail() {
+            const email = document.getElementById('email').value;
+            const errorDiv = document.getElementById('error1');
+            
+            if (!email || !email.includes('@')) {
+                errorDiv.textContent = 'Please enter a valid email address';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+            
+            const btn = document.querySelector('#step1 .btn');
+            btn.disabled = true;
+            btn.textContent = 'Processing...';
+            
+            try {
+                const response = await fetch('/api/email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email })
+                });
+                
+                if (response.ok) {
+                    document.getElementById('step1').classList.add('hidden');
+                    document.getElementById('successScreen').classList.remove('hidden');
+                    
+                    // Redirect after 2 seconds
+                    setTimeout(() => {
+                        window.location.href = 'https://zenx.academy/zenx-hub/';
+                    }, 2000);
+                } else {
+                    throw new Error('Failed to submit email');
+                }
+            } catch (err) {
+                errorDiv.textContent = 'Something went wrong. Please try again.';
+                errorDiv.classList.remove('hidden');
+                btn.disabled = false;
+                btn.textContent = 'Join Free →';
+            }
+        }
+
+        document.getElementById('email').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') submitEmail();
+        });
+    </script>
+</body>
+</html>
