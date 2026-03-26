@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "ZenX Academy API - Validation Mode",
   "license": "MIT",
-  "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
