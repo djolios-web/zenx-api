@@ -63,9 +63,10 @@ async function initDatabase() {
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        email VARCHAR(255) UNIQUE NOT NULL,
+        id VARCHAR(255) PRIMARY KEY,
+        email VARCHAR(255) UNIQUE,
         paddle_customer_id VARCHAR(255),
+        subscription_status VARCHAR(50) DEFAULT 'inactive',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
@@ -97,18 +98,24 @@ app.get('/api/me', async (req, res) => {
   if (!userId) return res.json({ userId: null, email: null });
 
   try {
-    const result = await pool.query('SELECT email FROM users WHERE id = $1', [userId]);
-    res.json({ userId, email: result.rows[0]?.email || null });
+    const result = await pool.query('SELECT email, subscription_status FROM users WHERE id = $1', [userId]);
+    res.json({ 
+      userId, 
+      email: result.rows[0]?.email || null,
+      subscriptionStatus: result.rows[0]?.subscription_status || 'inactive'
+    });
   } catch (error) {
     console.error('Error fetching user:', error);
     res.status(500).json({ error: 'Failed to fetch user info' });
   }
 });
 
-// Store email
+// Store email - FIXED VERSION with UPSERT
 app.post('/api/email', async (req, res) => {
   const { email } = req.body;
   const userId = unsignUserId(req.cookies.userId);
+
+  console.log('📧 Email request received:', { email, userId });
 
   if (!email || !email.includes('@')) {
     return res.status(400).json({ error: 'Valid email required' });
@@ -119,16 +126,20 @@ app.post('/api/email', async (req, res) => {
 
   try {
     await pool.query(
-      'UPDATE users SET email = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-      [email, userId]
+      `INSERT INTO users (id, email, updated_at)
+       VALUES ($1, $2, CURRENT_TIMESTAMP)
+       ON CONFLICT (id) DO UPDATE 
+         SET email = $2, updated_at = CURRENT_TIMESTAMP`,
+      [userId, email]
     );
+    console.log('✅ Email saved successfully:', email);
     res.json({ success: true });
   } catch (error) {
-    console.error('Email storage error:', error);
+    console.error('❌ Email storage error:', error);
     if (error.code === '23505') {
       return res.status(409).json({ error: 'This email is already registered.' });
     }
-    res.status(500).json({ error: 'Failed to save email' });
+    res.status(500).json({ error: 'Failed to save email: ' + error.message });
   }
 });
 
@@ -190,12 +201,19 @@ app.post('/webhook/paddle', async (req, res) => {
         'UPDATE users SET subscription_status = $1, updated_at = CURRENT_TIMESTAMP WHERE paddle_customer_id = $2',
         ['active', customer_id]
       );
+      console.log('✅ Subscription activated for customer:', customer_id);
     }
     res.json({ received: true });
   } catch (error) {
     console.error('Webhook error:', error);
     res.status(500).json({ error: 'Webhook processing failed' });
   }
+});
+
+// Global error handling middleware
+app.use((err, req, res, next) => {
+  console.error('❌ Unhandled error:', err);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 const PORT = process.env.PORT || 3000;
