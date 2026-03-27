@@ -44,7 +44,15 @@ function unsignUserId(signedValue) {
   return userId;
 }
 
-app.use(cors({ origin: true, credentials: true }));
+// ✅ CORS مُعدَّل
+app.use(cors({
+  origin: ['https://zenx.academy', 'https://www.zenx.academy'],
+  credentials: true,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+app.options('*', cors());
+
 app.use(cookieParser());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -119,20 +127,17 @@ app.post('/api/email', async (req, res) => {
   }
 
   try {
-    // ✅ Check if email exists with a different userId
     const existing = await pool.query(
       'SELECT id FROM users WHERE email = $1',
       [email]
     );
 
     if (existing.rows.length > 0 && existing.rows[0].id !== userId) {
-      // Email exists with different ID — update to current userId
       await pool.query(
         'UPDATE users SET id = $1, updated_at = CURRENT_TIMESTAMP WHERE email = $2',
         [userId, email]
       );
     } else {
-      // New email — insert or update same user
       await pool.query(
         `INSERT INTO users (id, email, updated_at)
          VALUES ($1, $2, CURRENT_TIMESTAMP)
@@ -226,10 +231,4 @@ app.post('/webhook/paddle', async (req, res) => {
 app.use((err, req, res, next) => {
   console.error('❌ Unhandled error:', err.stack);
   res.status(500).json({ error: err.message });
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-  initDatabase();
 });
