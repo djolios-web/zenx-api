@@ -9,6 +9,9 @@ const crypto     = require('crypto');
 const axios      = require('axios');
 require('dotenv').config();
 
+console.log('KEY:', process.env.PADDLE_API_KEY);
+console.log('ENV:', process.env.PADDLE_ENV);
+console.log('PRICE:', process.env.PADDLE_PRICE_ARCHITECT_MONTHLY);
 const app = express();
 app.set('trust proxy', 1);
 
