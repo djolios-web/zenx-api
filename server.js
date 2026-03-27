@@ -1,22 +1,29 @@
-const express = require('express');
+'use strict';
+
+const express    = require('express');
 const cookieParser = require('cookie-parser');
-const bodyParser = require('body-parser');
-const cors = require('cors');
-const { Pool } = require('pg');
-const { Paddle } = require('@paddle/paddle-node-sdk');
-const crypto = require('crypto');
+const cors       = require('cors');
+const { Pool }   = require('pg');
+const { Paddle, Environment } = require('@paddle/paddle-node-sdk');
+const crypto     = require('crypto');
+const axios      = require('axios');
 require('dotenv').config();
 
 const app = express();
 app.set('trust proxy', 1);
 
+// ─────────────────────────────────────────────
+// DB & Paddle
+// ─────────────────────────────────────────────
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
 
 const paddle = new Paddle(process.env.PADDLE_API_KEY, {
-  environment: process.env.PADDLE_ENV || 'production'
+  environment: process.env.PADDLE_ENV === 'production'
+    ? Environment.Production
+    : Environment.Sandbox
 });
 
 const PRODUCTS = {
@@ -28,6 +35,14 @@ const PRODUCTS = {
 
 const COOKIE_SECRET = process.env.SESSION_SECRET || 'zenx-secret-key';
 
+const ALLOWED_ORIGINS = [
+  'https://zenx.academy',
+  'https://www.zenx.academy'
+];
+
+// ─────────────────────────────────────────────
+// Cookie helpers
+// ─────────────────────────────────────────────
 function signUserId(userId) {
   const hmac = crypto.createHmac('sha256', COOKIE_SECRET).update(userId).digest('hex');
   return hmac + '.' + userId;
@@ -37,32 +52,53 @@ function unsignUserId(signedValue) {
   if (!signedValue) return null;
   const dotIndex = signedValue.indexOf('.');
   if (dotIndex === -1) return null;
-  const hmac = signedValue.substring(0, dotIndex);
+  const hmac   = signedValue.substring(0, dotIndex);
   const userId = signedValue.substring(dotIndex + 1);
   const expected = crypto.createHmac('sha256', COOKIE_SECRET).update(userId).digest('hex');
   if (hmac !== expected) return null;
   return userId;
 }
 
-// ✅ CORS
-app.use(cors({
-  origin: ['https://zenx.academy', 'https://www.zenx.academy'],
-  credentials: true,
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
-app.options('*', cors());
-
-app.use(cookieParser());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static('public'));
-
+// ─────────────────────────────────────────────
+// 1. CORS — أول middleware مطلقاً
+// ─────────────────────────────────────────────
 app.use((req, res, next) => {
-  console.log(`[${req.method}] ${req.path} | cookie: ${req.headers.cookie ? 'present' : 'missing'}`);
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Max-Age', '86400');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
 
+// ─────────────────────────────────────────────
+// 2. Raw body للـ webhook — قبل express.json()
+// ─────────────────────────────────────────────
+app.use('/webhook/paddle', express.raw({ type: 'application/json' }));
+
+// ─────────────────────────────────────────────
+// 3. Parsers لبقية الروتات
+// ─────────────────────────────────────────────
+app.use(cookieParser());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static('public'));
+
+// ─────────────────────────────────────────────
+// Logger
+// ─────────────────────────────────────────────
+app.use((req, res, next) => {
+  console.log(`[${req.method}] ${req.path} | origin: ${req.headers.origin || 'none'}`);
+  next();
+});
+
+// ─────────────────────────────────────────────
+// DB init
+// ─────────────────────────────────────────────
 async function initDatabase() {
   try {
     await pool.query(`
@@ -75,12 +111,20 @@ async function initDatabase() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    console.log('✅ Database initialized successfully');
+    console.log('✅ Database initialized');
   } catch (error) {
-    console.error('❌ Database initialization error:', error);
+    console.error('❌ Database init error:', error);
   }
 }
 
+// ─────────────────────────────────────────────
+// Health check — لـ UptimeRobot
+// ─────────────────────────────────────────────
+app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+
+// ─────────────────────────────────────────────
+// Routes
+// ─────────────────────────────────────────────
 app.get('/api/init', (req, res) => {
   let userId = unsignUserId(req.cookies.userId);
   if (!userId) {
@@ -117,20 +161,13 @@ app.get('/api/me', async (req, res) => {
 app.post('/api/email', async (req, res) => {
   const { email } = req.body;
   const userId = unsignUserId(req.cookies.userId);
-  console.log('📧 Email request:', { email, userId });
-
-  if (!email || !email.includes('@')) {
+  if (!email || !email.includes('@'))
     return res.status(400).json({ error: 'Valid email required' });
-  }
-  if (!userId) {
+  if (!userId)
     return res.status(400).json({ error: 'Session not initialized' });
-  }
 
   try {
-    const existing = await pool.query(
-      'SELECT id FROM users WHERE email = $1',
-      [email]
-    );
+    const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
     if (existing.rows.length > 0 && existing.rows[0].id !== userId) {
       await pool.query(
         'UPDATE users SET id = $1, updated_at = CURRENT_TIMESTAMP WHERE email = $2',
@@ -144,7 +181,6 @@ app.post('/api/email', async (req, res) => {
         [userId, email]
       );
     }
-    console.log('✅ Email saved:', email);
     res.json({ success: true });
   } catch (error) {
     console.error('❌ Email error:', error);
@@ -152,31 +188,29 @@ app.post('/api/email', async (req, res) => {
   }
 });
 
-// ✅ Checkout — يقبل email مباشرة بدون session
-app.post('/api/checkout', async (req, res) => {
+// ─────────────────────────────────────────────
+// Checkout — ✅ إصلاح paddle.transactions.create
+// ─────────────────────────────────────────────
+app.post('/api/checkout', async (req, res, next) => {
   const { plan, email } = req.body;
-  console.log('🛒 Checkout started | email:', email, '| plan:', plan);
+  console.log('🛒 Checkout | email:', email, '| plan:', plan);
 
   if (!plan) return res.status(400).json({ error: 'Plan required' });
-  if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+  if (!email || !email.includes('@'))
+    return res.status(400).json({ error: 'Valid email required' });
 
   const priceId = PRODUCTS[plan];
   if (!priceId) return res.status(400).json({ error: 'Invalid plan: ' + plan });
 
-  console.log('💰 Price ID:', priceId);
-
   try {
     let customerId;
     const result = await pool.query(
-      'SELECT paddle_customer_id FROM users WHERE email = $1',
-      [email]
+      'SELECT paddle_customer_id FROM users WHERE email = $1', [email]
     );
 
     if (result.rows[0]?.paddle_customer_id) {
       customerId = result.rows[0].paddle_customer_id;
-      console.log('👤 Existing customer:', customerId);
     } else {
-      console.log('👤 Creating new Paddle customer for:', email);
       const customer = await paddle.customers.create({ email });
       customerId = customer.id;
       const newId = Date.now().toString(36) + Math.random().toString(36).substr(2);
@@ -186,49 +220,134 @@ app.post('/api/checkout', async (req, res) => {
          ON CONFLICT (email) DO UPDATE SET paddle_customer_id = $3, updated_at = CURRENT_TIMESTAMP`,
         [newId, email, customerId]
       );
-      console.log('✅ Paddle customer created:', customerId);
     }
 
-    const checkout = await paddle.checkouts.create({
-      customerId,
-      items: [{ priceId, quantity: 1 }],
-      successUrl: `${process.env.FRONTEND_URL}/zenx-hub/`,
-      customData: { email, plan }
+    // ✅ الطريقة الصحيحة في Paddle Billing SDK
+    const transaction = await paddle.transactions.create({
+      customer_id: customerId,
+      items: [{ price_id: priceId, quantity: 1 }],
+      collection_mode: 'automatic',
+      custom_data: { email, plan }
     });
 
-    console.log('✅ Checkout URL:', checkout.url);
-    res.json({ url: checkout.url });
+    const checkoutUrl = transaction.checkout?.url;
+    if (!checkoutUrl)
+      return res.status(500).json({ error: 'No checkout URL returned from Paddle' });
+
+    console.log('✅ Checkout URL:', checkoutUrl);
+    res.json({ url: checkoutUrl });
 
   } catch (error) {
-    console.error('❌ Checkout error:', error);
-    res.status(500).json({ error: error.message || 'Checkout failed' });
+    console.error('❌ Checkout error:', error?.response?.data || error.message);
+    next(error);
   }
 });
 
+// ─────────────────────────────────────────────
+// Webhook — ✅ مع signature verification
+// ─────────────────────────────────────────────
 app.post('/webhook/paddle', async (req, res) => {
+  const rawBody        = req.body; // Buffer بسبب express.raw()
+  const signatureHeader = req.headers['paddle-signature'];
+
+  // Verify signature
+  let isValid = false;
   try {
-    const event = req.body;
+    isValid = paddle.webhooks.isSignatureValid(
+      rawBody,
+      process.env.PADDLE_WEBHOOK_SECRET,
+      signatureHeader
+    );
+  } catch (e) {
+    console.error('[webhook] Signature check error:', e.message);
+  }
+
+  if (!isValid) {
+    console.error('[webhook] ❌ Invalid signature');
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+
+  let event;
+  try {
+    event = JSON.parse(rawBody.toString('utf8'));
+  } catch {
+    return res.status(400).json({ error: 'Malformed JSON' });
+  }
+
+  console.log('[webhook] Event:', event.event_type);
+
+  // الرد فوراً لـ Paddle
+  res.status(200).json({ received: true });
+
+  // معالجة بعد الرد
+  try {
     if (event.event_type === 'transaction.completed') {
       const { customer_id } = event.data;
+      const email = event.data?.customer?.email;
+
+      // تحديث subscription في DB
       await pool.query(
         'UPDATE users SET subscription_status = $1, updated_at = CURRENT_TIMESTAMP WHERE paddle_customer_id = $2',
         ['active', customer_id]
       );
+      console.log('[webhook] ✅ Subscription activated for customer:', customer_id);
+
+      // إنشاء WordPress user إن وجد email
+      if (email && process.env.WORDPRESS_URL && process.env.WORDPRESS_APP_PASSWORD) {
+        const username = email.split('@')[0].replace(/[^a-z0-9]/gi, '')
+          + '_' + Math.random().toString(36).slice(2, 6);
+        const wpAuth = Buffer.from(
+          `${process.env.WORDPRESS_USER}:${process.env.WORDPRESS_APP_PASSWORD}`
+        ).toString('base64');
+
+        await axios.post(
+          `${process.env.WORDPRESS_URL}/wp-json/wp/v2/users`,
+          {
+            username,
+            email,
+            password: crypto.randomBytes(16).toString('hex'),
+            roles: ['subscriber']
+          },
+          { headers: { Authorization: `Basic ${wpAuth}` } }
+        ).catch(e => console.warn('[webhook] WP user warn:', e.response?.data || e.message));
+
+        console.log('[webhook] ✅ WP user created:', email);
+      }
     }
-    res.json({ received: true });
-  } catch (error) {
-    console.error('Webhook error:', error);
-    res.status(500).json({ error: 'Webhook processing failed' });
+
+    if (event.event_type === 'subscription.canceled') {
+      const { customer_id } = event.data;
+      await pool.query(
+        'UPDATE users SET subscription_status = $1, updated_at = CURRENT_TIMESTAMP WHERE paddle_customer_id = $2',
+        ['inactive', customer_id]
+      );
+      console.log('[webhook] ✅ Subscription canceled for customer:', customer_id);
+    }
+
+  } catch (err) {
+    console.error('[webhook] Processing error:', err.message);
   }
 });
 
+// ─────────────────────────────────────────────
+// Global Error Handler — مع CORS headers
+// ─────────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('❌ Unhandled error:', err.stack);
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
   res.status(500).json({ error: err.message });
 });
 
+// ─────────────────────────────────────────────
+// Start
+// ─────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`✅ ZenX Backend running on port ${PORT}`);
+  console.log(`   Paddle ENV: ${process.env.PADDLE_ENV}`);
   await initDatabase();
 });
