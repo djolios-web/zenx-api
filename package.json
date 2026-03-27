@@ -1,7 +1,7 @@
 {
   "name": "zenx-api",
   "version": "1.0.0",
-  "description": "ZenX Academy API - Validation Mode",
+  "description": "ZenX Academy API - Paddle Billing + WordPress Integration",
   "license": "MIT",
   "main": "server.js",
   "type": "commonjs",
@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@paddle/paddle-node-sdk": "^1.6.0",
+    "axios": "^1.6.0",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
