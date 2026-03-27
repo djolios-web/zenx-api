@@ -4,26 +4,23 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const { Pool } = require('pg');
 const Paddle = require('@paddle/paddle-node-sdk').Paddle;
-const path = require('path');
 const crypto = require('crypto');
-
-// Load environment variables
 require('dotenv').config();
 
 const app = express();
 
-// Database connection
+// ✅ CRITICAL: Trust Render's proxy
+app.set('trust proxy', 1);
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  ssl: { rejectUnauthorized: false }
 });
 
-// Initialize Paddle
 const paddle = new Paddle(process.env.PADDLE_API_KEY, {
-  environment: process.env.PADDLE_ENV || 'sandbox'
+  environment: process.env.PADDLE_ENV || 'production'
 });
 
-// PRODUCTS constant
 const PRODUCTS = {
   'initiate-monthly': process.env.PADDLE_PRICE_INITIATE_MONTHLY,
   'initiate-yearly': process.env.PADDLE_PRICE_INITIATE_YEARLY,
@@ -31,8 +28,7 @@ const PRODUCTS = {
   'architect-yearly': process.env.PADDLE_PRICE_ARCHITECT_YEARLY
 };
 
-// Cookie signing helpers
-const COOKIE_SECRET = process.env.SESSION_SECRET || 'zenx-secret-key-change-in-production';
+const COOKIE_SECRET = process.env.SESSION_SECRET || 'zenx-secret-key';
 
 function signUserId(userId) {
   return crypto.createHmac('sha256', COOKIE_SECRET).update(userId).digest('hex') + '.' + userId;
@@ -42,23 +38,29 @@ function unsignUserId(signedValue) {
   if (!signedValue) return null;
   const parts = signedValue.split('.');
   if (parts.length !== 2) return null;
-  const hmac = parts[0];
-  const userId = parts[1];
-  const expectedHmac = crypto.createHmac('sha256', COOKIE_SECRET).update(userId).digest('hex');
-  if (hmac !== expectedHmac) return null;
+  const [hmac, userId] = parts;
+  const expected = crypto.createHmac('sha256', COOKIE_SECRET).update(userId).digest('hex');
+  if (hmac !== expected) return null;
   return userId;
 }
 
-// Middleware
+// ✅ CORS with credentials
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
+
 app.use(cookieParser());
-app.use(cors({ origin: true, credentials: true }));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-
-// Serve static files (public folder)
 app.use(express.static('public'));
 
-// Initialize database table
+// ✅ Debug logger
+app.use((req, res, next) => {
+  console.log(`[${req.method}] ${req.path} | cookie: ${req.headers.cookie ? 'present' : 'missing'}`);
+  next();
+});
+
 async function initDatabase() {
   try {
     await pool.query(`
@@ -77,7 +79,6 @@ async function initDatabase() {
   }
 }
 
-// Initialize session endpoint
 app.get('/api/init', (req, res) => {
   let userId = unsignUserId(req.cookies.userId);
   if (!userId) {
@@ -85,123 +86,85 @@ app.get('/api/init', (req, res) => {
     res.cookie('userId', signUserId(userId), {
       maxAge: 365 * 24 * 60 * 60 * 1000,
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax'
+      secure: true,
+      sameSite: 'none'
     });
   }
   res.json({ success: true, userId });
 });
 
-// Get current user
 app.get('/api/me', async (req, res) => {
   const userId = unsignUserId(req.cookies.userId);
   if (!userId) return res.json({ userId: null, email: null });
-
   try {
     const result = await pool.query('SELECT email, subscription_status FROM users WHERE id = $1', [userId]);
-    res.json({ 
-      userId, 
-      email: result.rows[0]?.email || null,
-      subscriptionStatus: result.rows[0]?.subscription_status || 'inactive'
-    });
+    res.json({ userId, email: result.rows[0]?.email || null, subscriptionStatus: result.rows[0]?.subscription_status || 'inactive' });
   } catch (error) {
     console.error('Error fetching user:', error);
     res.status(500).json({ error: 'Failed to fetch user info' });
   }
 });
 
-// Store email - FIXED VERSION with UPSERT
 app.post('/api/email', async (req, res) => {
   const { email } = req.body;
   const userId = unsignUserId(req.cookies.userId);
-
-  console.log('📧 Email request received:', { email, userId });
-
-  if (!email || !email.includes('@')) {
-    return res.status(400).json({ error: 'Valid email required' });
-  }
-  if (!userId) {
-    return res.status(400).json({ error: 'Session not initialized' });
-  }
-
+  console.log('📧 Email request:', { email, userId });
+  if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+  if (!userId) return res.status(400).json({ error: 'Session not initialized' });
   try {
     await pool.query(
-      `INSERT INTO users (id, email, updated_at)
-       VALUES ($1, $2, CURRENT_TIMESTAMP)
-       ON CONFLICT (id) DO UPDATE 
-         SET email = $2, updated_at = CURRENT_TIMESTAMP`,
+      `INSERT INTO users (id, email, updated_at) VALUES ($1, $2, CURRENT_TIMESTAMP)
+       ON CONFLICT (id) DO UPDATE SET email = $2, updated_at = CURRENT_TIMESTAMP`,
       [userId, email]
     );
-    console.log('✅ Email saved successfully:', email);
+    console.log('✅ Email saved:', email);
     res.json({ success: true });
   } catch (error) {
-    console.error('❌ Email storage error:', error);
-    if (error.code === '23505') {
-      return res.status(409).json({ error: 'This email is already registered.' });
-    }
+    console.error('❌ Email error:', error);
+    if (error.code === '23505') return res.status(409).json({ error: 'Email already registered.' });
     res.status(500).json({ error: 'Failed to save email: ' + error.message });
   }
 });
 
-// Checkout
 app.post('/api/checkout', async (req, res) => {
   const { plan } = req.body;
   const userId = unsignUserId(req.cookies.userId);
-
-  console.log('✅ Checkout started - userId:', userId, 'plan:', plan);
-
+  console.log('🛒 Checkout started | userId:', userId, '| plan:', plan);
   if (!userId) return res.status(400).json({ error: 'Session not initialized' });
   if (!plan) return res.status(400).json({ error: 'Plan required' });
-
   const priceId = PRODUCTS[plan];
   if (!priceId) return res.status(400).json({ error: 'Invalid plan' });
-
   try {
     const result = await pool.query('SELECT email, paddle_customer_id FROM users WHERE id = $1', [userId]);
     const email = result.rows[0]?.email;
-
     console.log('📧 Email found:', email);
-
-    if (!email) {
-      return res.status(400).json({ error: 'Email not found. Please complete step 1 first.' });
-    }
-
+    if (!email) return res.status(400).json({ error: 'Email not found. Please complete step 1 first.' });
     let customerId = result.rows[0]?.paddle_customer_id;
-
     if (!customerId) {
       const customer = await paddle.customers.create({ email });
       customerId = customer.id;
-      await pool.query(
-        'UPDATE users SET paddle_customer_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-        [customerId, userId]
-      );
+      await pool.query('UPDATE users SET paddle_customer_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [customerId, userId]);
     }
-
     const checkout = await paddle.checkouts.create({
-      customerId: customerId,
+      customerId,
       items: [{ priceId, quantity: 1 }],
       successUrl: `${process.env.FRONTEND_URL}/zenx-hub/`,
       customData: { userId, plan }
     });
-
+    console.log('✅ Checkout URL created:', checkout.url);
     res.json({ url: checkout.url });
   } catch (error) {
-    console.error('❌ Checkout error:', error);
+    console.error('❌ Checkout error full:', error);
     res.status(500).json({ error: error.message || 'Checkout failed' });
   }
 });
 
-// Webhook
 app.post('/webhook/paddle', async (req, res) => {
   try {
     const event = req.body;
     if (event.event_type === 'transaction.completed') {
       const { customer_id } = event.data;
-      await pool.query(
-        'UPDATE users SET subscription_status = $1, updated_at = CURRENT_TIMESTAMP WHERE paddle_customer_id = $2',
-        ['active', customer_id]
-      );
-      console.log('✅ Subscription activated for customer:', customer_id);
+      await pool.query('UPDATE users SET subscription_status = $1, updated_at = CURRENT_TIMESTAMP WHERE paddle_customer_id = $2', ['active', customer_id]);
     }
     res.json({ received: true });
   } catch (error) {
@@ -210,10 +173,9 @@ app.post('/webhook/paddle', async (req, res) => {
   }
 });
 
-// Global error handling middleware
 app.use((err, req, res, next) => {
-  console.error('❌ Unhandled error:', err);
-  res.status(500).json({ error: 'Internal server error' });
+  console.error('❌ Unhandled error:', err.stack);
+  res.status(500).json({ error: err.message });
 });
 
 const PORT = process.env.PORT || 3000;
