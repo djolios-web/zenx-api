@@ -3,13 +3,11 @@ const cookieParser = require('cookie-parser');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const { Pool } = require('pg');
-const Paddle = require('@paddle/paddle-node-sdk').Paddle;
+const { Paddle } = require('@paddle/paddle-node-sdk');
 const crypto = require('crypto');
 require('dotenv').config();
 
 const app = express();
-
-// ✅ CRITICAL: Trust Render's proxy
 app.set('trust proxy', 1);
 
 const pool = new Pool({
@@ -22,40 +20,36 @@ const paddle = new Paddle(process.env.PADDLE_API_KEY, {
 });
 
 const PRODUCTS = {
-  'initiate-monthly': process.env.PADDLE_PRICE_INITIATE_MONTHLY,
-  'initiate-yearly': process.env.PADDLE_PRICE_INITIATE_YEARLY,
+  'initiate-monthly':  process.env.PADDLE_PRICE_INITIATE_MONTHLY,
+  'initiate-yearly':   process.env.PADDLE_PRICE_INITIATE_YEARLY,
   'architect-monthly': process.env.PADDLE_PRICE_ARCHITECT_MONTHLY,
-  'architect-yearly': process.env.PADDLE_PRICE_ARCHITECT_YEARLY
+  'architect-yearly':  process.env.PADDLE_PRICE_ARCHITECT_YEARLY
 };
 
 const COOKIE_SECRET = process.env.SESSION_SECRET || 'zenx-secret-key';
 
 function signUserId(userId) {
-  return crypto.createHmac('sha256', COOKIE_SECRET).update(userId).digest('hex') + '.' + userId;
+  const hmac = crypto.createHmac('sha256', COOKIE_SECRET).update(userId).digest('hex');
+  return hmac + '.' + userId;
 }
 
 function unsignUserId(signedValue) {
   if (!signedValue) return null;
-  const parts = signedValue.split('.');
-  if (parts.length !== 2) return null;
-  const [hmac, userId] = parts;
+  const dotIndex = signedValue.indexOf('.');
+  if (dotIndex === -1) return null;
+  const hmac = signedValue.substring(0, dotIndex);
+  const userId = signedValue.substring(dotIndex + 1);
   const expected = crypto.createHmac('sha256', COOKIE_SECRET).update(userId).digest('hex');
   if (hmac !== expected) return null;
   return userId;
 }
 
-// ✅ CORS with credentials
-app.use(cors({
-  origin: true,
-  credentials: true
-}));
-
+app.use(cors({ origin: true, credentials: true }));
 app.use(cookieParser());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
-// ✅ Debug logger
 app.use((req, res, next) => {
   console.log(`[${req.method}] ${req.path} | cookie: ${req.headers.cookie ? 'present' : 'missing'}`);
   next();
@@ -97,8 +91,15 @@ app.get('/api/me', async (req, res) => {
   const userId = unsignUserId(req.cookies.userId);
   if (!userId) return res.json({ userId: null, email: null });
   try {
-    const result = await pool.query('SELECT email, subscription_status FROM users WHERE id = $1', [userId]);
-    res.json({ userId, email: result.rows[0]?.email || null, subscriptionStatus: result.rows[0]?.subscription_status || 'inactive' });
+    const result = await pool.query(
+      'SELECT email, subscription_status FROM users WHERE id = $1',
+      [userId]
+    );
+    res.json({
+      userId,
+      email: result.rows[0]?.email || null,
+      subscriptionStatus: result.rows[0]?.subscription_status || 'inactive'
+    });
   } catch (error) {
     console.error('Error fetching user:', error);
     res.status(500).json({ error: 'Failed to fetch user info' });
@@ -109,19 +110,41 @@ app.post('/api/email', async (req, res) => {
   const { email } = req.body;
   const userId = unsignUserId(req.cookies.userId);
   console.log('📧 Email request:', { email, userId });
-  if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
-  if (!userId) return res.status(400).json({ error: 'Session not initialized' });
+
+  if (!email || !email.includes('@')) {
+    return res.status(400).json({ error: 'Valid email required' });
+  }
+  if (!userId) {
+    return res.status(400).json({ error: 'Session not initialized' });
+  }
+
   try {
-    await pool.query(
-      `INSERT INTO users (id, email, updated_at) VALUES ($1, $2, CURRENT_TIMESTAMP)
-       ON CONFLICT (id) DO UPDATE SET email = $2, updated_at = CURRENT_TIMESTAMP`,
-      [userId, email]
+    // ✅ Check if email exists with a different userId
+    const existing = await pool.query(
+      'SELECT id FROM users WHERE email = $1',
+      [email]
     );
+
+    if (existing.rows.length > 0 && existing.rows[0].id !== userId) {
+      // Email exists with different ID — update to current userId
+      await pool.query(
+        'UPDATE users SET id = $1, updated_at = CURRENT_TIMESTAMP WHERE email = $2',
+        [userId, email]
+      );
+    } else {
+      // New email — insert or update same user
+      await pool.query(
+        `INSERT INTO users (id, email, updated_at)
+         VALUES ($1, $2, CURRENT_TIMESTAMP)
+         ON CONFLICT (id) DO UPDATE SET email = $2, updated_at = CURRENT_TIMESTAMP`,
+        [userId, email]
+      );
+    }
+
     console.log('✅ Email saved:', email);
     res.json({ success: true });
   } catch (error) {
     console.error('❌ Email error:', error);
-    if (error.code === '23505') return res.status(409).json({ error: 'Email already registered.' });
     res.status(500).json({ error: 'Failed to save email: ' + error.message });
   }
 });
@@ -130,29 +153,53 @@ app.post('/api/checkout', async (req, res) => {
   const { plan } = req.body;
   const userId = unsignUserId(req.cookies.userId);
   console.log('🛒 Checkout started | userId:', userId, '| plan:', plan);
+
   if (!userId) return res.status(400).json({ error: 'Session not initialized' });
-  if (!plan) return res.status(400).json({ error: 'Plan required' });
+  if (!plan)   return res.status(400).json({ error: 'Plan required' });
+
   const priceId = PRODUCTS[plan];
-  if (!priceId) return res.status(400).json({ error: 'Invalid plan' });
+  if (!priceId) return res.status(400).json({ error: 'Invalid plan: ' + plan });
+
+  console.log('💰 Price ID:', priceId);
+  console.log('🔑 Paddle API Key prefix:', process.env.PADDLE_API_KEY?.substring(0, 20));
+
   try {
-    const result = await pool.query('SELECT email, paddle_customer_id FROM users WHERE id = $1', [userId]);
-    const email = result.rows[0]?.email;
+    const result = await pool.query(
+      'SELECT email, paddle_customer_id FROM users WHERE id = $1',
+      [userId]
+    );
+    const user = result.rows[0];
+    const email = user?.email;
     console.log('📧 Email found:', email);
-    if (!email) return res.status(400).json({ error: 'Email not found. Please complete step 1 first.' });
-    let customerId = result.rows[0]?.paddle_customer_id;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email not found. Please complete step 1.' });
+    }
+
+    let customerId = user?.paddle_customer_id;
+
     if (!customerId) {
+      console.log('👤 Creating Paddle customer for:', email);
       const customer = await paddle.customers.create({ email });
       customerId = customer.id;
-      await pool.query('UPDATE users SET paddle_customer_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [customerId, userId]);
+      await pool.query(
+        'UPDATE users SET paddle_customer_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+        [customerId, userId]
+      );
+      console.log('✅ Paddle customer created:', customerId);
     }
+
+    console.log('🛒 Creating checkout for customer:', customerId, 'price:', priceId);
     const checkout = await paddle.checkouts.create({
       customerId,
       items: [{ priceId, quantity: 1 }],
       successUrl: `${process.env.FRONTEND_URL}/zenx-hub/`,
       customData: { userId, plan }
     });
+
     console.log('✅ Checkout URL created:', checkout.url);
     res.json({ url: checkout.url });
+
   } catch (error) {
     console.error('❌ Checkout error full:', error);
     res.status(500).json({ error: error.message || 'Checkout failed' });
@@ -164,7 +211,10 @@ app.post('/webhook/paddle', async (req, res) => {
     const event = req.body;
     if (event.event_type === 'transaction.completed') {
       const { customer_id } = event.data;
-      await pool.query('UPDATE users SET subscription_status = $1, updated_at = CURRENT_TIMESTAMP WHERE paddle_customer_id = $2', ['active', customer_id]);
+      await pool.query(
+        'UPDATE users SET subscription_status = $1, updated_at = CURRENT_TIMESTAMP WHERE paddle_customer_id = $2',
+        ['active', customer_id]
+      );
     }
     res.json({ received: true });
   } catch (error) {
