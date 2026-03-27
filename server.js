@@ -44,7 +44,7 @@ function unsignUserId(signedValue) {
   return userId;
 }
 
-// ✅ CORS مُعدَّل
+// ✅ CORS
 app.use(cors({
   origin: ['https://zenx.academy', 'https://www.zenx.academy'],
   credentials: true,
@@ -131,7 +131,6 @@ app.post('/api/email', async (req, res) => {
       'SELECT id FROM users WHERE email = $1',
       [email]
     );
-
     if (existing.rows.length > 0 && existing.rows[0].id !== userId) {
       await pool.query(
         'UPDATE users SET id = $1, updated_at = CURRENT_TIMESTAMP WHERE email = $2',
@@ -145,7 +144,6 @@ app.post('/api/email', async (req, res) => {
         [userId, email]
       );
     }
-
     console.log('✅ Email saved:', email);
     res.json({ success: true });
   } catch (error) {
@@ -154,59 +152,55 @@ app.post('/api/email', async (req, res) => {
   }
 });
 
+// ✅ Checkout — يقبل email مباشرة بدون session
 app.post('/api/checkout', async (req, res) => {
-  const { plan } = req.body;
-  const userId = unsignUserId(req.cookies.userId);
-  console.log('🛒 Checkout started | userId:', userId, '| plan:', plan);
+  const { plan, email } = req.body;
+  console.log('🛒 Checkout started | email:', email, '| plan:', plan);
 
-  if (!userId) return res.status(400).json({ error: 'Session not initialized' });
-  if (!plan)   return res.status(400).json({ error: 'Plan required' });
+  if (!plan) return res.status(400).json({ error: 'Plan required' });
+  if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
 
   const priceId = PRODUCTS[plan];
   if (!priceId) return res.status(400).json({ error: 'Invalid plan: ' + plan });
 
   console.log('💰 Price ID:', priceId);
-  console.log('🔑 Paddle API Key prefix:', process.env.PADDLE_API_KEY?.substring(0, 20));
 
   try {
+    let customerId;
     const result = await pool.query(
-      'SELECT email, paddle_customer_id FROM users WHERE id = $1',
-      [userId]
+      'SELECT paddle_customer_id FROM users WHERE email = $1',
+      [email]
     );
-    const user = result.rows[0];
-    const email = user?.email;
-    console.log('📧 Email found:', email);
 
-    if (!email) {
-      return res.status(400).json({ error: 'Email not found. Please complete step 1.' });
-    }
-
-    let customerId = user?.paddle_customer_id;
-
-    if (!customerId) {
-      console.log('👤 Creating Paddle customer for:', email);
+    if (result.rows[0]?.paddle_customer_id) {
+      customerId = result.rows[0].paddle_customer_id;
+      console.log('👤 Existing customer:', customerId);
+    } else {
+      console.log('👤 Creating new Paddle customer for:', email);
       const customer = await paddle.customers.create({ email });
       customerId = customer.id;
+      const newId = Date.now().toString(36) + Math.random().toString(36).substr(2);
       await pool.query(
-        'UPDATE users SET paddle_customer_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-        [customerId, userId]
+        `INSERT INTO users (id, email, paddle_customer_id, updated_at)
+         VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+         ON CONFLICT (email) DO UPDATE SET paddle_customer_id = $3, updated_at = CURRENT_TIMESTAMP`,
+        [newId, email, customerId]
       );
       console.log('✅ Paddle customer created:', customerId);
     }
 
-    console.log('🛒 Creating checkout for customer:', customerId, 'price:', priceId);
     const checkout = await paddle.checkouts.create({
       customerId,
       items: [{ priceId, quantity: 1 }],
       successUrl: `${process.env.FRONTEND_URL}/zenx-hub/`,
-      customData: { userId, plan }
+      customData: { email, plan }
     });
 
-    console.log('✅ Checkout URL created:', checkout.url);
+    console.log('✅ Checkout URL:', checkout.url);
     res.json({ url: checkout.url });
 
   } catch (error) {
-    console.error('❌ Checkout error full:', error);
+    console.error('❌ Checkout error:', error);
     res.status(500).json({ error: error.message || 'Checkout failed' });
   }
 });
@@ -232,6 +226,7 @@ app.use((err, req, res, next) => {
   console.error('❌ Unhandled error:', err.stack);
   res.status(500).json({ error: err.message });
 });
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`✅ ZenX Backend running on port ${PORT}`);
