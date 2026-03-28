@@ -12,6 +12,8 @@ require('dotenv').config();
 console.log('KEY:', process.env.PADDLE_API_KEY);
 console.log('ENV:', process.env.PADDLE_ENV);
 console.log('PRICE:', process.env.PADDLE_PRICE_ARCHITECT_MONTHLY);
+console.log('SC_PART1:', process.env.PADDLE_PRICE_SC_PART1);
+console.log('SC_BUNDLE:', process.env.PADDLE_PRICE_SC_BUNDLE);
 const app = express();
 app.set('trust proxy', 1);
 
