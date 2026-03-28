@@ -207,6 +207,8 @@ app.post('/api/email', async (req, res) => {
 app.post('/api/checkout', async (req, res, next) => {
   const { plan, email } = req.body;
   console.log('🛒 Checkout | email:', email, '| plan:', plan);
+const priceId = PRODUCTS[plan];
+console.log('💰 priceId found:', priceId);
 console.log('🔍 Full body received:', JSON.stringify(req.body));
   
   if (!plan) return res.status(400).json({ error: 'Plan required' });
