@@ -33,7 +33,15 @@ const PRODUCTS = {
   'initiate-monthly':  process.env.PADDLE_PRICE_INITIATE_MONTHLY,
   'initiate-yearly':   process.env.PADDLE_PRICE_INITIATE_YEARLY,
   'architect-monthly': process.env.PADDLE_PRICE_ARCHITECT_MONTHLY,
-  'architect-yearly':  process.env.PADDLE_PRICE_ARCHITECT_YEARLY
+  'architect-yearly':  process.env.PADDLE_PRICE_ARCHITECT_YEARLY,
+  // ── Solomonic Consciousness ──────────────────
+  'sc-protocol': process.env.PADDLE_PRICE_SC_PROTOCOL,
+  'sc-part1':    process.env.PADDLE_PRICE_SC_PART1,
+  'sc-part2':    process.env.PADDLE_PRICE_SC_PART2,
+  'sc-part3':    process.env.PADDLE_PRICE_SC_PART3,
+  'sc-part4':    process.env.PADDLE_PRICE_SC_PART4,
+  'sc-part5':    process.env.PADDLE_PRICE_SC_PART5,
+  'sc-part6':    process.env.PADDLE_PRICE_SC_PART6,
 };
 
 const COOKIE_SECRET = process.env.SESSION_SECRET || 'zenx-secret-key';
@@ -192,7 +200,7 @@ app.post('/api/email', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
-// Checkout — ✅ إصلاح paddle.transactions.create
+// Checkout
 // ─────────────────────────────────────────────
 app.post('/api/checkout', async (req, res, next) => {
   const { plan, email } = req.body;
@@ -225,7 +233,6 @@ app.post('/api/checkout', async (req, res, next) => {
       );
     }
 
-    // ✅ الطريقة الصحيحة في Paddle Billing SDK
     const transaction = await paddle.transactions.create({
       customer_id: customerId,
       items: [{ price_id: priceId, quantity: 1 }],
@@ -247,13 +254,12 @@ app.post('/api/checkout', async (req, res, next) => {
 });
 
 // ─────────────────────────────────────────────
-// Webhook — ✅ مع signature verification
+// Webhook — مع signature verification
 // ─────────────────────────────────────────────
 app.post('/webhook/paddle', async (req, res) => {
-  const rawBody        = req.body; // Buffer بسبب express.raw()
+  const rawBody         = req.body;
   const signatureHeader = req.headers['paddle-signature'];
 
-  // Verify signature
   let isValid = false;
   try {
     isValid = paddle.webhooks.isSignatureValid(
@@ -279,23 +285,19 @@ app.post('/webhook/paddle', async (req, res) => {
 
   console.log('[webhook] Event:', event.event_type);
 
-  // الرد فوراً لـ Paddle
   res.status(200).json({ received: true });
 
-  // معالجة بعد الرد
   try {
     if (event.event_type === 'transaction.completed') {
       const { customer_id } = event.data;
       const email = event.data?.customer?.email;
 
-      // تحديث subscription في DB
       await pool.query(
         'UPDATE users SET subscription_status = $1, updated_at = CURRENT_TIMESTAMP WHERE paddle_customer_id = $2',
         ['active', customer_id]
       );
       console.log('[webhook] ✅ Subscription activated for customer:', customer_id);
 
-      // إنشاء WordPress user إن وجد email
       if (email && process.env.WORDPRESS_URL && process.env.WORDPRESS_APP_PASSWORD) {
         const username = email.split('@')[0].replace(/[^a-z0-9]/gi, '')
           + '_' + Math.random().toString(36).slice(2, 6);
