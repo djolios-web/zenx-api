@@ -44,6 +44,7 @@ const PRODUCTS = {
   'sc-part4':    process.env.PADDLE_PRICE_SC_PART4,
   'sc-part5':    process.env.PADDLE_PRICE_SC_PART5,
   'sc-part6':    process.env.PADDLE_PRICE_SC_PART6,
+  'sc-bundle':   process.env.PADDLE_PRICE_SC_BUNDLE,
 };
 
 const COOKIE_SECRET = process.env.SESSION_SECRET || 'zenx-secret-key';
