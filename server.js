@@ -303,12 +303,26 @@ app.post('/webhook/paddle', async (req, res) => {
       );
       console.log('[webhook] ✅ Subscription activated for customer:', customer_id);
 
-      if (email && process.env.WORDPRESS_URL && process.env.WORDPRESS_APP_PASSWORD) {
-        const username = email.split('@')[0].replace(/[^a-z0-9]/gi, '')
-          + '_' + Math.random().toString(36).slice(2, 6);
-        const wpAuth = Buffer.from(
-          `${process.env.WORDPRESS_USER}:${process.env.WORDPRESS_APP_PASSWORD}`
-        ).toString('base64');
+    if (email) {
+  const plan = event.data?.custom_data?.plan;
+  if (plan) {
+    try {
+      await axios.post(
+        `${process.env.WP_SITE_URL}/wp-json/zenx/v1/grant-access`,
+        { email, plan_id: plan },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-ZenX-Secret': process.env.WP_GRANT_SECRET
+          }
+        }
+      );
+      console.log('[webhook] ✅ RCP access granted for:', email, '| plan:', plan);
+    } catch (e) {
+      console.error('[webhook] ❌ RCP grant error:', e.response?.data || e.message);
+    }
+  }
+}
 
         await axios.post(
           `${process.env.WORDPRESS_URL}/wp-json/wp/v2/users`,
