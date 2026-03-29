@@ -45,7 +45,7 @@ const PRODUCTS = {
   'gob':         process.env.PADDLE_PRICE_GOB,
 };
 
-const COOKIE_SECRET  = process.env.SESSION_SECRET || 'zenx-secret-key';
+const COOKIE_SECRET   = process.env.SESSION_SECRET || 'zenx-secret-key';
 const ALLOWED_ORIGINS = [
   'https://zenx.academy',
   'https://www.zenx.academy'
@@ -258,50 +258,62 @@ app.post('/webhook/paddle', async (req, res) => {
     if (event.event_type === 'transaction.completed') {
       const { customer_id } = event.data;
       const email = event.data?.customer?.email;
+      const plan  = event.data?.custom_data?.plan;
 
+      // 1️⃣ تحديث قاعدة البيانات
       await pool.query(
         'UPDATE users SET subscription_status = $1, updated_at = CURRENT_TIMESTAMP WHERE paddle_customer_id = $2',
         ['active', customer_id]
       );
-      console.log('[webhook] ✅ Subscription activated for customer:', customer_id);
-// Generate WordPress password reset link
-const wpResetResponse = await axios.post(
-  `${process.env.WP_SITE_URL}/wp-json/zenx/v1/reset-link`,
-  { email },
-  { headers: { 'X-ZenX-Secret': process.env.WP_GRANT_SECRET } }
-).catch(() => null);
+      console.log('[webhook] ✅ DB updated for customer:', customer_id);
 
-const resetLink = wpResetResponse?.data?.link || 'https://zenx.academy/my-account';
-
-// Send welcome email via Brevo
-await axios.post(
-  'https://api.brevo.com/v3/smtp/email',
-  {
-    templateId: 8,
-    to: [{ email }],
-    params: { RESET_LINK: resetLink }
-  },
-  { headers: { 'api-key': process.env.BREVO_API_KEY, 'Content-Type': 'application/json' } }
-);
-console.log('[webhook] ✅ Welcome email sent to:', email);
-      if (email) {
-        const plan = event.data?.custom_data?.plan;
-        if (plan) {
-          try {
-            await axios.post(
-              `${process.env.WP_SITE_URL}/wp-json/zenx/v1/grant-access`,
-              { email, plan_id: plan },
-              {
-                headers: {
-                  'Content-Type': 'application/json',
-                  'X-ZenX-Secret': process.env.WP_GRANT_SECRET
-                }
+      // 2️⃣ منح الـ RCP membership
+      if (email && plan) {
+        try {
+          await axios.post(
+            `${process.env.WP_SITE_URL}/wp-json/zenx/v1/grant-access`,
+            { email, plan_id: plan },
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'X-ZenX-Secret': process.env.WP_GRANT_SECRET
               }
-            );
-            console.log('[webhook] ✅ RCP access granted for:', email, '| plan:', plan);
-          } catch (e) {
-            console.error('[webhook] ❌ RCP grant error:', e.response?.data || e.message);
-          }
+            }
+          );
+          console.log('[webhook] ✅ RCP access granted for:', email, '| plan:', plan);
+        } catch (e) {
+          console.error('[webhook] ❌ RCP grant error:', e.response?.data || e.message);
+        }
+      }
+
+      // 3️⃣ توليد reset link وإرسال الإيميل
+      if (email) {
+        const wpResetResponse = await axios.post(
+          `${process.env.WP_SITE_URL}/wp-json/zenx/v1/reset-link`,
+          { email },
+          { headers: { 'X-ZenX-Secret': process.env.WP_GRANT_SECRET } }
+        ).catch(() => null);
+
+        const resetLink = wpResetResponse?.data?.link || 'https://zenx.academy/my-account';
+
+        try {
+          await axios.post(
+            'https://api.brevo.com/v3/smtp/email',
+            {
+              templateId: 8,
+              to: [{ email }],
+              params: { RESET_LINK: resetLink }
+            },
+            {
+              headers: {
+                'api-key': process.env.BREVO_API_KEY,
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+          console.log('[webhook] ✅ Welcome email sent to:', email);
+        } catch (e) {
+          console.error('[webhook] ❌ Brevo error:', e.response?.data || e.message);
         }
       }
     }
