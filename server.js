@@ -264,7 +264,26 @@ app.post('/webhook/paddle', async (req, res) => {
         ['active', customer_id]
       );
       console.log('[webhook] ✅ Subscription activated for customer:', customer_id);
+// Generate WordPress password reset link
+const wpResetResponse = await axios.post(
+  `${process.env.WP_SITE_URL}/wp-json/zenx/v1/reset-link`,
+  { email },
+  { headers: { 'X-ZenX-Secret': process.env.WP_GRANT_SECRET } }
+).catch(() => null);
 
+const resetLink = wpResetResponse?.data?.link || 'https://zenx.academy/my-account';
+
+// Send welcome email via Brevo
+await axios.post(
+  'https://api.brevo.com/v3/smtp/email',
+  {
+    templateId: 8,
+    to: [{ email }],
+    params: { RESET_LINK: resetLink }
+  },
+  { headers: { 'api-key': process.env.BREVO_API_KEY, 'Content-Type': 'application/json' } }
+);
+console.log('[webhook] ✅ Welcome email sent to:', email);
       if (email) {
         const plan = event.data?.custom_data?.plan;
         if (plan) {
