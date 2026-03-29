@@ -14,12 +14,10 @@ console.log('ENV:', process.env.PADDLE_ENV);
 console.log('PRICE:', process.env.PADDLE_PRICE_ARCHITECT_MONTHLY);
 console.log('SC_PART1:', process.env.PADDLE_PRICE_SC_PART1);
 console.log('SC_BUNDLE:', process.env.PADDLE_PRICE_SC_BUNDLE);
+
 const app = express();
 app.set('trust proxy', 1);
 
-// ─────────────────────────────────────────────
-// DB & Paddle
-// ─────────────────────────────────────────────
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
@@ -36,7 +34,6 @@ const PRODUCTS = {
   'initiate-yearly':   process.env.PADDLE_PRICE_INITIATE_YEARLY,
   'architect-monthly': process.env.PADDLE_PRICE_ARCHITECT_MONTHLY,
   'architect-yearly':  process.env.PADDLE_PRICE_ARCHITECT_YEARLY,
-  // ── Solomonic Consciousness ──────────────────
   'sc-protocol': process.env.PADDLE_PRICE_SC_PROTOCOL,
   'sc-part1':    process.env.PADDLE_PRICE_SC_PART1,
   'sc-part2':    process.env.PADDLE_PRICE_SC_PART2,
@@ -45,19 +42,15 @@ const PRODUCTS = {
   'sc-part5':    process.env.PADDLE_PRICE_SC_PART5,
   'sc-part6':    process.env.PADDLE_PRICE_SC_PART6,
   'sc-bundle':   process.env.PADDLE_PRICE_SC_BUNDLE,
-  'gob': process.env.PADDLE_PRICE_GOB,
+  'gob':         process.env.PADDLE_PRICE_GOB,
 };
 
-const COOKIE_SECRET = process.env.SESSION_SECRET || 'zenx-secret-key';
-
+const COOKIE_SECRET  = process.env.SESSION_SECRET || 'zenx-secret-key';
 const ALLOWED_ORIGINS = [
   'https://zenx.academy',
   'https://www.zenx.academy'
 ];
 
-// ─────────────────────────────────────────────
-// Cookie helpers
-// ─────────────────────────────────────────────
 function signUserId(userId) {
   const hmac = crypto.createHmac('sha256', COOKIE_SECRET).update(userId).digest('hex');
   return hmac + '.' + userId;
@@ -74,9 +67,6 @@ function unsignUserId(signedValue) {
   return userId;
 }
 
-// ─────────────────────────────────────────────
-// 1. CORS — أول middleware مطلقاً
-// ─────────────────────────────────────────────
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
@@ -90,30 +80,17 @@ app.use((req, res, next) => {
   next();
 });
 
-// ─────────────────────────────────────────────
-// 2. Raw body للـ webhook — قبل express.json()
-// ─────────────────────────────────────────────
 app.use('/webhook/paddle', express.raw({ type: 'application/json' }));
-
-// ─────────────────────────────────────────────
-// 3. Parsers لبقية الروتات
-// ─────────────────────────────────────────────
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
-// ─────────────────────────────────────────────
-// Logger
-// ─────────────────────────────────────────────
 app.use((req, res, next) => {
   console.log(`[${req.method}] ${req.path} | origin: ${req.headers.origin || 'none'}`);
   next();
 });
 
-// ─────────────────────────────────────────────
-// DB init
-// ─────────────────────────────────────────────
 async function initDatabase() {
   try {
     await pool.query(`
@@ -132,14 +109,8 @@ async function initDatabase() {
   }
 }
 
-// ─────────────────────────────────────────────
-// Health check — لـ UptimeRobot
-// ─────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
-// ─────────────────────────────────────────────
-// Routes
-// ─────────────────────────────────────────────
 app.get('/api/init', (req, res) => {
   let userId = unsignUserId(req.cookies.userId);
   if (!userId) {
@@ -180,7 +151,6 @@ app.post('/api/email', async (req, res) => {
     return res.status(400).json({ error: 'Valid email required' });
   if (!userId)
     return res.status(400).json({ error: 'Session not initialized' });
-
   try {
     const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
     if (existing.rows.length > 0 && existing.rows[0].id !== userId) {
@@ -203,14 +173,11 @@ app.post('/api/email', async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────
-// Checkout
-// ─────────────────────────────────────────────
 app.post('/api/checkout', async (req, res, next) => {
   const { plan, email } = req.body;
- console.log('🛒 Checkout | email:', email, '| plan:', plan);
-console.log('🔍 Full body received:', JSON.stringify(req.body));
-  
+  console.log('🛒 Checkout | email:', email, '| plan:', plan);
+  console.log('🔍 Full body received:', JSON.stringify(req.body));
+
   if (!plan) return res.status(400).json({ error: 'Plan required' });
   if (!email || !email.includes('@'))
     return res.status(400).json({ error: 'Valid email required' });
@@ -223,7 +190,6 @@ console.log('🔍 Full body received:', JSON.stringify(req.body));
     const result = await pool.query(
       'SELECT paddle_customer_id FROM users WHERE email = $1', [email]
     );
-
     if (result.rows[0]?.paddle_customer_id) {
       customerId = result.rows[0].paddle_customer_id;
     } else {
@@ -258,9 +224,6 @@ console.log('🔍 Full body received:', JSON.stringify(req.body));
   }
 });
 
-// ─────────────────────────────────────────────
-// Webhook — مع signature verification
-// ─────────────────────────────────────────────
 app.post('/webhook/paddle', async (req, res) => {
   const rawBody         = req.body;
   const signatureHeader = req.headers['paddle-signature'];
@@ -289,7 +252,6 @@ app.post('/webhook/paddle', async (req, res) => {
   }
 
   console.log('[webhook] Event:', event.event_type);
-
   res.status(200).json({ received: true });
 
   try {
@@ -303,39 +265,25 @@ app.post('/webhook/paddle', async (req, res) => {
       );
       console.log('[webhook] ✅ Subscription activated for customer:', customer_id);
 
-    if (email) {
-  const plan = event.data?.custom_data?.plan;
-  if (plan) {
-    try {
-      await axios.post(
-        `${process.env.WP_SITE_URL}/wp-json/zenx/v1/grant-access`,
-        { email, plan_id: plan },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'X-ZenX-Secret': process.env.WP_GRANT_SECRET
+      if (email) {
+        const plan = event.data?.custom_data?.plan;
+        if (plan) {
+          try {
+            await axios.post(
+              `${process.env.WP_SITE_URL}/wp-json/zenx/v1/grant-access`,
+              { email, plan_id: plan },
+              {
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-ZenX-Secret': process.env.WP_GRANT_SECRET
+                }
+              }
+            );
+            console.log('[webhook] ✅ RCP access granted for:', email, '| plan:', plan);
+          } catch (e) {
+            console.error('[webhook] ❌ RCP grant error:', e.response?.data || e.message);
           }
         }
-      );
-      console.log('[webhook] ✅ RCP access granted for:', email, '| plan:', plan);
-    } catch (e) {
-      console.error('[webhook] ❌ RCP grant error:', e.response?.data || e.message);
-    }
-  }
-}
-
-        await axios.post(
-          `${process.env.WORDPRESS_URL}/wp-json/wp/v2/users`,
-          {
-            username,
-            email,
-            password: crypto.randomBytes(16).toString('hex'),
-            roles: ['subscriber']
-          },
-          { headers: { Authorization: `Basic ${wpAuth}` } }
-        ).catch(e => console.warn('[webhook] WP user warn:', e.response?.data || e.message));
-
-        console.log('[webhook] ✅ WP user created:', email);
       }
     }
 
@@ -353,9 +301,6 @@ app.post('/webhook/paddle', async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────
-// Global Error Handler — مع CORS headers
-// ─────────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('❌ Unhandled error:', err.stack);
   const origin = req.headers.origin;
@@ -366,9 +311,6 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message });
 });
 
-// ─────────────────────────────────────────────
-// Start
-// ─────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`✅ ZenX Backend running on port ${PORT}`);
