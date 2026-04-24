@@ -348,3 +348,46 @@ app.listen(PORT, async () => {
   console.log(`   Paddle ENV: ${process.env.PADDLE_ENV}`);
   await initDatabase();
 });
+app.get('/paddle/pay-link/room', async (req, res) => {
+  try {
+    const priceId = process.env.PADDLE_PRICE_ROOM;
+
+    if (!priceId) {
+      return res.status(400).json({ error: 'Missing PADDLE_PRICE_ROOM' });
+    }
+
+    const response = await axios.post(
+      'https://api.paddle.com/transactions',
+      {
+        items: [
+          {
+            price_id: priceId,
+            quantity: 1
+          }
+        ]
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.PADDLE_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    const checkoutUrl = response.data?.data?.checkout?.url;
+
+    if (!checkoutUrl) {
+      return res.status(500).json({ error: 'No checkout URL returned from Paddle', raw: response.data });
+    }
+
+    return res.json({
+      success: true,
+      url: checkoutUrl
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: 'Failed to create Paddle transaction',
+      details: error.response?.data || error.message
+    });
+  }
+});
