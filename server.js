@@ -350,10 +350,16 @@ app.listen(PORT, async () => {
 });
 app.get('/paddle/pay-link/room', async (req, res) => {
   try {
+    console.log('ROOM PRICE ENV:', process.env.PADDLE_PRICE_ROOM);
+    console.log('ALL PADDLE ENV KEYS:', Object.keys(process.env).filter(k => k.includes('PADDLE')));
+
     const priceId = process.env.PADDLE_PRICE_ROOM;
 
     if (!priceId) {
-      return res.status(400).json({ error: 'Missing PADDLE_PRICE_ROOM' });
+      return res.status(400).json({
+        error: 'Missing PADDLE_PRICE_ROOM',
+        available_paddle_keys: Object.keys(process.env).filter(k => k.includes('PADDLE'))
+      });
     }
 
     const response = await axios.post(
@@ -377,7 +383,10 @@ app.get('/paddle/pay-link/room', async (req, res) => {
     const checkoutUrl = response.data?.data?.checkout?.url;
 
     if (!checkoutUrl) {
-      return res.status(500).json({ error: 'No checkout URL returned from Paddle', raw: response.data });
+      return res.status(500).json({
+        error: 'No checkout URL returned from Paddle',
+        raw: response.data
+      });
     }
 
     return res.json({
